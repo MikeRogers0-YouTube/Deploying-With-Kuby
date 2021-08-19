@@ -1,0 +1,56 @@
+---
+name: Deploy via Kuby
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Pull down the latest docker image
+        run: |
+          docker pull ruby:3.0.1 --quiet
+          docker pull node:12.14.1 --quiet
+          docker pull nginx:1.9-alpine --quiet
+
+      - name: Login to DigitalOcean Container Registry
+        run: doctl registry login --expiry-seconds 600
+
+      - name: Set Rails Master Key
+        run: |
+          echo ${{ secrets.RAILS_MASTER_KEY }} > config/master.key
+
+      - name: Build Latest
+        run: |
+          bundle exec kuby -e production build
+
+      - name: Push to DigitalOcean Container Registry
+        run: |
+          bundle exec kuby -e production push
+
+      - name: Deploy to Production
+        run: |
+          bundle exec kuby -e production deploy
+
+      # This will remove any dangling docker data & stop our cache from ballooning out of control.
+      - name: Clean Up
+        run: |
+          doctl registry logout
+          docker image prune -f
+          docker volume prune -f
