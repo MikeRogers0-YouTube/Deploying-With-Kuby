@@ -1,1 +1,1 @@
-require 'faker'
+require "faker"
